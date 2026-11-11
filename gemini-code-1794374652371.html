@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интеллект-карта: Обработка тонколистового металла (6 класс)</title>
+    <style>
+        /* === Базовые настройки и переменные === */
+        :root {
+            --bg-gradient: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+            --node-bg: rgba(255, 255, 255, 0.65);
+            --node-border: rgba(255, 255, 255, 0.8);
+            --node-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            --node-hover-bg: rgba(255, 255, 255, 0.95);
+            --text-color: #2c3e50;
+            --text-title: #1a252f;
+            --line-color: rgba(255, 255, 255, 0.8);
+            --center-node-bg: rgba(255, 235, 153, 0.85);
+            --category-node-bg: rgba(200, 240, 255, 0.8);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            min-height: 100vh;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 10px;
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--text-title);
+            margin-bottom: 5px;
+        }
+
+        header p {
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+
+        /* === Контейнер Карты === */
+        #map-container {
+            position: relative;
+            flex: 1;
+            padding: 40px 20px 100px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* SVG для соединительных линий */
+        #connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none; /* Чтобы не мешал кликать по узлам */
+        }
+
+        path.line {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 4px;
+            stroke-linecap: round;
+            filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1));
+            /* Анимация появления линий */
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawLine 1.5s ease forwards;
+        }
+
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* === Узлы (Nodes) === */
+        .node {
+            position: relative;
+            z-index: 2;
+            background: var(--node-bg);
+            border: 1px solid var(--node-border);
+            box-shadow: var(--node-shadow);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 15px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .node:hover {
+            transform: translateY(-5px) scale(1.03);
+            background: var(--node-hover-bg);
+            box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.25);
+        }
+
+        .node:active {
+            transform: translateY(-1px) scale(0.98);
+        }
+
+        /* Стилизация разных уровней */
+        .node-center {
+            background: var(--center-node-bg);
+            font-size: 1.3rem;
+            padding: 20px 30px;
+            margin-bottom: 50px;
+            border-radius: 24px;
+            max-width: 90%;
+        }
+
+        .node-category {
+            background: var(--category-node-bg);
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+        }
+
+        .node-item {
+            font-size: 0.95rem;
+            padding: 12px 16px;
+            font-weight: 500;
+            width: 100%;
+        }
+
+        /* === Структура Дерева === */
+        .level-categories {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 40px;
+            width: 100%;
+        }
+
+        .branch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            min-width: 250px;
+            max-width: 300px;
+        }
+
+        .level-items {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            align-items: center;
+        }
+
+        /* === Модальное окно (Информационная панель) === */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            transform: translateY(30px) scale(0.95);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: translateY(0) scale(1);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #ff5e5e;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .modal-close:hover { background: #ff3b3b; }
+
+        .modal-title {
+            color: var(--text-title);
+            margin-bottom: 15px;
+            font-size: 1.4rem;
+            padding-right: 30px; /* Отступ для кнопки закрытия */
+        }
+
+        .modal-desc {
+            color: #444;
+            line-height: 1.6;
+            font-size: 1.05rem;
+        }
+
+        /* === Адаптивность для мобильных устройств === */
+        @media (max-width: 768px) {
+            .level-categories {
+                flex-direction: column;
+                align-items: center;
+                gap: 50px;
+            }
+            .branch {
+                width: 100%;
+                max-width: 90%;
+            }
+            #map-container {
+                padding: 20px 10px 60px 10px;
+            }
+            .node-center {
+                font-size: 1.1rem;
+                padding: 15px 20px;
+                margin-bottom: 40px;
+            }
+            .modal-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Технологии обработки тонколистового металла</h1>
+        <p>Интерактивная карта для 6 класса. Нажми на любой блок, чтобы узнать больше!</p>
+    </header>
+
+    <div id="map-container">
+        <!-- SVG для отрисовки линий с помощью JavaScript -->
+        <svg id="connections"></svg>
+        
+        <!-- Контент карты будет сгенерирован через JS для чистоты HTML -->
+    </div>
+
+    <!-- Модальное окно -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close-btn">&times;</button>
+            <h2 class="modal-title" id="modal-title">Заголовок</h2>
+            <div class="modal-desc" id="modal-desc">Описание...</div>
+        </div>
+    </div>
+
+    <script>
+        // === 1. Данные Интеллект-карты ===
+        const mindMapData = {
+            id: "center",
+            title: "Обработка тонколистового металла (6 класс)",
+            desc: "Тонколистовой металл — это металл толщиной до 2 мм. На уроках технологии мы изучаем его свойства, учимся размечать, резать, гнуть и безопасно с ним работать.",
+            type: "center",
+            children: [
+                {
+                    id: "cat-1",
+                    title: "Виды металлов",
+                    desc: "В школьных мастерских используются разные виды металлов. Важно знать их свойства, чтобы правильно выбрать материал для поделки.",
+                    type: "category",
+                    children: [
+                        { id: "item-1-1", title: "Жесть", desc: "Тонкая листовая сталь. Бывает чёрная (без покрытия, быстро ржавеет) и белая (покрытая тонким слоем олова для защиты от коррозии, из неё делают консервные банки)." },
+                        { id: "item-1-2", title: "Кровельная сталь", desc: "Листовая сталь толщиной от 0,5 до 0,8 мм. Часто покрывается цинком (оцинкованная сталь), чтобы не ржавела под дождём. Используется для крыш и водостоков." },
+                        { id: "item-1-3", title: "Фольга", desc: "Очень тонкий металл (толщина менее 0,2 мм), который легко гнётся, режется обычными ножницами и даже рвётся руками. Бывает алюминиевая и медная." },
+                        { id: "item-1-4", title: "Алюминий и Медь", desc: "Это цветные металлы. Они очень мягкие, пластичные, легко гнутся и не подвержены ржавчине. Из них получаются красивые декоративные изделия." }
+                    ]
+                },
+                {
+                    id: "cat-2",
+                    title: "Инструменты",
+                    desc: "Слесарные инструменты предназначены для ручной обработки металла. Ими нужно пользоваться строго по назначению.",
+                    type: "category",
+                    children: [
+                        { id: "item-2-1", title: "Чертилка", desc: "Инструмент для нанесения линий (рисок) на металле при разметке. Работает как карандаш, но оставляет царапину на поверхности. Хранить нужно остриём вниз!" },
+                        { id: "item-2-2", title: "Кернер", desc: "Стальной стержень с острым концом. Нужен для того, чтобы делать небольшие углубления (лунки) в металле перед сверлением, чтобы сверло не скользило по гладкой поверхности." },
+                        { id: "item-2-3", title: "Киянка", desc: "Деревянный (или резиновый) молоток. Используется для правки и гибки тонкого металла. В отличие от стального молотка, она не оставляет вмятин на поверхности заготовки." },
+                        { id: "item-2-4", title: "Слесарный молоток", desc: "Металлический молоток с плоским и заостренным концом (бойком). Применяется для рубки металла, гибки и ударов по кернеру." },
+                        { id: "item-2-5", title: "Ножницы по металлу", desc: "Специальные мощные ручные ножницы для резания тонкого листового металла. Заготовка разрезается за счет сдвига частиц металла лезвиями." },
+                        { id: "item-2-6", title: "Напильник", desc: "Металлический брусок с острыми насечками. Используется для зачистки острых краев металла (опиливания) и снятия заусенцев после разрезания." },
+                        { id: "item-2-7", title: "Слесарный угольник", desc: "Измерительный инструмент, состоящий из двух линеек, скрепленных под углом 90 градусов. Нужен для разметки прямых углов и проверки ровности деталей." }
+                    ]
+                },
+                {
+                    id: "cat-3",
+                    title: "Этапы работы",
+                    desc: "Любая деталь изготавливается в строгой последовательности. Эти шаги называются технологическим процессом.",
+                    type: "category",
+                    children: [
+                        { id: "item-3-1", title: "Правка", desc: "Самый первый этап. Выравнивание погнутого или покоробленного металла. Выполняется ударами киянки на ровной металлической правильной плите." },
+                        { id: "item-3-2", title: "Разметка", desc: "Нанесение контуров будущей детали на заготовку по чертежу. Используются линейка, слесарный угольник, чертилка, циркуль и кернер." },
+                        { id: "item-3-3", title: "Резание", desc: "Разделение металла на части по линиям разметки. Тонкий металл режут ручными слесарными ножницами." },
+                        { id: "item-3-4", title: "Гибка", desc: "Придание детали нужной формы. Часто выполняется в слесарных тисках с использованием киянки и специальных оправок." },
+                        { id: "item-3-5", title: "Зачистка", desc: "Финальная обработка. Напильником или шлифовальной шкуркой убирают острые края (заусенцы), чтобы деталь была безопасной и аккуратной." }
+                    ]
+                },
+                {
+                    id: "cat-4",
+                    title: "Техника безопасности",
+                    desc: "Металл очень острый! Соблюдение правил безопасности — самое главное правило на уроках технологии.",
+                    type: "category",
+                    children: [
+                        { id: "item-4-1", title: "Работать в рукавицах", desc: "При резании ножницами и рубке металла необходимо обязательно надевать защитные рукавицы, чтобы уберечь руки от травм." },
+                        { id: "item-4-2", title: "Беречь руки от порезов", desc: "Края отрезанного металла (заусенцы) острые как бритва. Никогда не проводи пальцем по кромке металла, чтобы проверить качество реза!" },
+                        { id: "item-4-3", title: "Надежно крепить заготовку", desc: "При гибке или обработке напильником деталь должна быть прочно и надежно зажата в тисках." },
+                        { id: "item-4-4", title: "Не сдувать стружку", desc: "Металлическую пыль, опилки и стружку категорически запрещено сдувать ртом или смахивать голой рукой. Для этого есть специальная щетка-сметка." }
+                    ]
+                }
+            ]
+        };
+
+        const mapContainer = document.getElementById('map-container');
+        const svgCanvas = document.getElementById('connections');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalDesc = document.getElementById('modal-desc');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+
+        // Массив для хранения связей {fromId, toId}, чтобы потом нарисовать линии
+        const connections = [];
+
+        // === 2. Генерация DOM дерева (HTML) ===
+        function buildMap() {
+            // Создаем центральный узел
+            const centerNode = createNodeElement(mindMapData);
+            mapContainer.appendChild(centerNode);
+
+            // Создаем контейнер для веток
+            const branchesContainer = document.createElement('div');
+            branchesContainer.className = 'level-categories';
+            mapContainer.appendChild(branchesContainer);
+
+            // Проходим по категориям
+            mindMapData.children.forEach(category => {
+                const branchDiv = document.createElement('div');
+                branchDiv.className = 'branch';
+                
+                // Узел категории
+                const categoryNode = createNodeElement(category);
+                branchDiv.appendChild(categoryNode);
+                
+                // Связь от центра к категории
+                connections.push({ from: mindMapData.id, to: category.id });
+
+                // Контейнер для элементов внутри категории
+                const itemsContainer = document.createElement('div');
+                itemsContainer.className = 'level-items';
+
+                // Создаем элементы (инструменты, правила и т.д.)
+                category.children.forEach(item => {
+                    const itemNode = createNodeElement(item, 'node-item');
+                    itemsContainer.appendChild(itemNode);
+                    
+                    // Связь от категории к элементу
+                    connections.push({ from: category.id, to: item.id });
+                });
+
+                branchDiv.appendChild(itemsContainer);
+                branchesContainer.appendChild(branchDiv);
+            });
+        }
+
+        // Вспомогательная функция создания HTML элемента узла
+        function createNodeElement(data, extraClass = '') {
+            const el = document.createElement('div');
+            el.className = `node ${data.type === 'center' ? 'node-center' : data.type === 'category' ? 'node-category' : extraClass}`;
+            el.id = data.id;
+            el.textContent = data.title;
+            
+            // Добавляем событие клика для модального окна
+            el.addEventListener('click', () => openModal(data.title, data.desc));
+            return el;
+        }
+
+        // === 3. Логика Модального окна ===
+        function openModal(title, desc) {
+            modalTitle.textContent = title;
+            modalDesc.textContent = desc;
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        modalCloseBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal(); // Закрытие по клику вне окна
+        });
+
+        // Закрытие по ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeModal();
+            }
+        });
+
+        // === 4. Отрисовка линий (SVG) ===
+        function drawLines() {
+            // Очищаем предыдущие линии
+            svgCanvas.innerHTML = '';
+            
+            const containerRect = mapContainer.getBoundingClientRect();
+
+            connections.forEach(conn => {
+                const elFrom = document.getElementById(conn.from);
+                const elTo = document.getElementById(conn.to);
+
+                if (!elFrom || !elTo) return;
+
+                const rectFrom = elFrom.getBoundingClientRect();
+                const rectTo = elTo.getBoundingClientRect();
+
+                // Вычисляем координаты относительно контейнера (с учетом прокрутки страницы)
+                const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left;
+                const startY = rectFrom.bottom - containerRect.top; // Низ родителя
+
+                const endX = rectTo.left + rectTo.width / 2 - containerRect.left;
+                const endY = rectTo.top - containerRect.top; // Верх потомка
+
+                // Создаем плавную кривую (Кривая Безье)
+                // Чем больше curvature, тем более изогнутая линия.
+                const curvature = 0.4;
+                const cp1X = startX;
+                const cp1Y = startY + Math.abs(endY - startY) * curvature;
+                const cp2X = endX;
+                const cp2Y = endY - Math.abs(endY - startY) * curvature;
+
+                const pathData = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("class", "line");
+                path.setAttribute("d", pathData);
+
+                svgCanvas.appendChild(path);
+            });
+        }
+
+        // === 5. Инициализация ===
+        document.addEventListener('DOMContentLoaded', () => {
+            buildMap();
+            // Ждем небольшую задержку, чтобы браузер успел применить стили и расставить элементы
+            setTimeout(drawLines, 100); 
+        });
+
+        // Перерисовываем линии при изменении размера окна для адаптивности
+        window.addEventListener('resize', () => {
+            // Используем requestAnimationFrame для плавности при ресайзе
+            window.requestAnimationFrame(drawLines);
+        });
+
+    </script>
+</body>
+</html>
+```eof
